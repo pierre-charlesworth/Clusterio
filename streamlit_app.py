@@ -1,7 +1,6 @@
 
 # streamlit_app.py
-# Web-based GUI for Mode of Action (MoA) fingerprint clustering and matching
-# Built with Streamlit, ready for deployment on Streamlit Cloud or Hugging Face Spaces
+# Extended Streamlit app with expression profile generation from raw plate data
 
 import streamlit as st
 import pandas as pd
@@ -17,31 +16,64 @@ from math import pi
 
 # Sidebar navigation
 st.sidebar.title("MoA Fingerprint App")
-page = st.sidebar.radio("Go to", ["Upload & Cluster", "Match Unknowns", "Radar Chart"])
+page = st.sidebar.radio("Go to", ["Generate Fingerprints", "Upload & Cluster", "Match Unknowns", "Radar Chart"])
 
 # Session state init
-if "reference_data" not in st.session_state:
-    st.session_state.reference_data = None
-if "reference_scaled" not in st.session_state:
-    st.session_state.reference_scaled = None
-if "scaler" not in st.session_state:
-    st.session_state.scaler = None
-if "reference_features" not in st.session_state:
-    st.session_state.reference_features = None
+for key in ["reference_data", "reference_scaled", "scaler", "reference_features"]:
+    if key not in st.session_state:
+        st.session_state[key] = None
 
-# Page 1: Upload & Cluster
-if page == "Upload & Cluster":
+# Page 1: Generate Fingerprints
+if page == "Generate Fingerprints":
+    st.title("🧬 Generate Expression Profiles from Raw Plate Data")
+
+    raw_file = st.file_uploader("Upload raw plate data (CSV with well names as index)", type="csv")
+    map_file = st.file_uploader("Upload well map (CSV with columns: Well, Compound, Reporter, Dose, Control)", type="csv")
+
+    if raw_file and map_file:
+        raw_df = pd.read_csv(raw_file, index_col=0)
+        map_df = pd.read_csv(map_file)
+
+        # Merge raw data with map
+        long_data = raw_df.stack().reset_index()
+        long_data.columns = ["Well", "MeasurementType", "Value"]
+        merged = pd.merge(map_df, long_data, on="Well")
+
+        # Normalize (fold change over control for same reporter + dose)
+        norm_data = []
+        grouped = merged.groupby(["Compound", "Reporter", "Dose"])
+        for (compound, reporter, dose), group in grouped:
+            control_vals = group[group["Control"] == True]["Value"]
+            if control_vals.empty:
+                continue
+            control_mean = control_vals.mean()
+            fold_changes = group[group["Control"] == False]["Value"] / control_mean
+            fc_mean = fold_changes.mean()
+            norm_data.append({
+                "Compound": compound,
+                "Reporter": reporter,
+                "Dose": dose,
+                "FoldChange": fc_mean
+            })
+
+        norm_df = pd.DataFrame(norm_data)
+        norm_df["Feature"] = norm_df["Reporter"] + "_" + norm_df["Dose"].astype(str) + "x"
+        pivot_df = norm_df.pivot(index="Compound", columns="Feature", values="FoldChange").reset_index()
+
+        st.subheader("Generated Expression Profile Matrix")
+        st.dataframe(pivot_df)
+        st.download_button("Download Expression Profile CSV", pivot_df.to_csv(index=False), file_name="expression_profiles.csv")
+
+# Page 2: Upload & Cluster
+elif page == "Upload & Cluster":
     st.title("📊 Upload & Cluster Known Compound Profiles")
-
-    uploaded_file = st.file_uploader("Upload known compound expression profiles (CSV)", type="csv")
+    uploaded_file = st.file_uploader("Upload known expression profiles (CSV)", type="csv")
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
         st.write("Raw Data:", df.head())
-
         compound_names = df.iloc[:, 0]
         features_df = df.drop(columns=[df.columns[0]])
 
-        # Normalize and scale
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(features_df)
 
@@ -50,7 +82,6 @@ if page == "Upload & Cluster":
         st.session_state.reference_scaled = X_scaled
         st.session_state.reference_features = features_df
 
-        # PCA Plot
         pca = PCA(n_components=2)
         X_pca = pca.fit_transform(X_scaled)
         st.subheader("PCA Projection")
@@ -62,20 +93,17 @@ if page == "Upload & Cluster":
         ax.set_ylabel("PC2")
         st.pyplot(fig)
 
-        # Dendrogram
         st.subheader("Hierarchical Clustering")
         linked = linkage(X_scaled, method="ward")
         fig2, ax2 = plt.subplots(figsize=(8, 4))
         dendrogram(linked, labels=compound_names.values, leaf_rotation=90, ax=ax2)
         st.pyplot(fig2)
 
-        # KMeans clustering
         k = st.slider("Select number of clusters (K)", 2, 10, 4)
         kmeans = KMeans(n_clusters=k, random_state=42)
         clusters = kmeans.fit_predict(X_scaled)
         df["Cluster"] = clusters
 
-        # User annotation for MoA labels
         st.subheader("Cluster Annotations")
         cluster_labels = {}
         for cluster_id in sorted(df["Cluster"].unique()):
@@ -89,7 +117,7 @@ if page == "Upload & Cluster":
             st.download_button("Download Annotated Reference", df.to_csv(index=False), file_name="annotated_reference.csv")
             st.success("Reference dataset updated and ready for matching.")
 
-# Page 2: Match Unknowns
+# Page 3: Match Unknowns
 elif page == "Match Unknowns":
     st.title("🔍 Match Unknown Compounds")
 
@@ -99,13 +127,10 @@ elif page == "Match Unknowns":
         unknown_file = st.file_uploader("Upload unknown compound fingerprints (CSV)", type="csv")
         if unknown_file:
             unknown_df = pd.read_csv(unknown_file)
-            st.write("Unknown Data:", unknown_df.head())
-
             unknown_names = unknown_df.iloc[:, 0].values
             unknown_features = unknown_df.drop(columns=[unknown_df.columns[0]])
             unknown_scaled = st.session_state.scaler.transform(unknown_features)
 
-            # Perform cosine similarity
             results = []
             ref_df = st.session_state.reference_data
             ref_names = ref_df["Compound"]
@@ -126,10 +151,9 @@ elif page == "Match Unknowns":
             st.dataframe(results_df)
             st.download_button("Download Match Results", results_df.to_csv(index=False), file_name="moa_match_results.csv")
 
-# Page 3: Radar Chart
+# Page 4: Radar Chart
 elif page == "Radar Chart":
     st.title("📈 Radar Chart Comparison")
-
     if st.session_state.reference_data is None:
         st.warning("No reference data loaded.")
     else:
@@ -137,7 +161,6 @@ elif page == "Radar Chart":
         ref_features = st.session_state.reference_features
         scaler = st.session_state.scaler
 
-        st.subheader("Compare an Unknown Compound to its Best Match")
         unknown_file = st.file_uploader("Upload unknown compound again (CSV)", type="csv", key="radar")
         if unknown_file:
             unknown_df = pd.read_csv(unknown_file)
@@ -147,7 +170,6 @@ elif page == "Radar Chart":
             ref_vectors = st.session_state.reference_scaled
 
             selection = st.selectbox("Select Unknown Compound", unknown_names)
-
             idx = list(unknown_names).index(selection)
             uvec = unknown_scaled[idx]
             sims = cosine_similarity([uvec], ref_vectors).flatten()
