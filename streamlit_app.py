@@ -193,6 +193,11 @@ elif page == "Upload & Cluster":
     if "Cluster" in features_df.columns:
         features_df = features_df.drop(columns=["Cluster"])
         st.info("Removed 'Cluster' column from analysis (it's not a feature).")
+    
+    # Remove MoA column if it exists (from previous labeling)
+    if "MoA" in features_df.columns:
+        features_df = features_df.drop(columns=["MoA"])
+        st.info("Removed 'MoA' column from analysis (it's not a feature).")
 
     # Check if we have enough data for analysis
     if len(df) < 2:
