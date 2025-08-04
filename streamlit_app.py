@@ -225,12 +225,30 @@ elif page == "Upload & Cluster":
         
         st.subheader("PCA Projection")
         fig, ax = plt.subplots()
-        ax.scatter(X_pca[:, 0], X_pca[:, 1])
-        for i, name in enumerate(compound_names):
-            ax.annotate(name, (X_pca[i, 0], X_pca[i, 1]), fontsize=8)
-        ax.set_xlabel("PC1")
-        ax.set_ylabel("PC2")
+        
+        if n_components == 1:
+            # Only one component available - create a 1D plot
+            ax.scatter(X_pca[:, 0], [0] * len(X_pca), s=100)
+            for i, name in enumerate(compound_names):
+                ax.annotate(name, (X_pca[i, 0], 0), fontsize=8, ha='center', va='bottom')
+            ax.set_xlabel("PC1")
+            ax.set_ylabel("")
+            ax.set_ylim(-0.5, 0.5)
+            ax.set_title("1D PCA Projection (only one component available)")
+        else:
+            # Two components available - create 2D plot
+            ax.scatter(X_pca[:, 0], X_pca[:, 1], s=100)
+            for i, name in enumerate(compound_names):
+                ax.annotate(name, (X_pca[i, 0], X_pca[i, 1]), fontsize=8)
+            ax.set_xlabel("PC1")
+            ax.set_ylabel("PC2")
+            ax.set_title("2D PCA Projection")
+        
         st.pyplot(fig)
+        
+        # Show explained variance if we have multiple components
+        if n_components > 1:
+            st.write(f"Explained variance ratio: PC1={pca.explained_variance_ratio_[0]:.3f}, PC2={pca.explained_variance_ratio_[1]:.3f}")
         
     except Exception as e:
         st.error(f"❌ PCA failed: {str(e)}")
