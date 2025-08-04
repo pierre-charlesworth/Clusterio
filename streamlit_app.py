@@ -22,13 +22,28 @@ if page == "Generate Fingerprints (Multi-Plate)":
     st.title("🧬 Generate Expression Profiles from Multiple Single-Plate Files")
 
     uploaded_raws = st.file_uploader("Upload one or more raw plate files (CSV: Well, BetaGlo, BacTiterGlo)", type="csv", accept_multiple_files=True)
-    uploaded_maps = st.file_uploader("Upload corresponding well maps (CSV: Well, Compound, Reporter, Dose, Control)", type="csv", accept_multiple_files=True)
+    uploaded_maps = st.file_uploader("Upload corresponding well maps (CSV: Well, Reporter, Dose, Control)", type="csv", accept_multiple_files=True)
+
+    # Add compound name input for each raw file
+    compound_names = {}
+    if uploaded_raws:
+        st.subheader("🔬 Specify Compound Names")
+        st.info("Each plate represents a different compound. Please specify the compound name for each raw plate file:")
+        
+        for i, raw_file in enumerate(uploaded_raws):
+            compound_name = st.text_input(
+                f"Compound name for {raw_file.name}:",
+                key=f"compound_{i}",
+                placeholder="e.g., Compound_A, Drug_123, etc."
+            )
+            if compound_name:
+                compound_names[i] = compound_name
 
     merge_profiles = st.checkbox("Merge all expression profiles into a single CSV", value=True)
     auto_push = st.checkbox("Make merged profile available in clustering tab", value=True)
 
     # Check if we have files to process
-    if uploaded_raws and uploaded_maps:
+    if uploaded_raws and uploaded_maps and len(compound_names) == len(uploaded_raws):
         if len(uploaded_maps) == 1 and len(uploaded_raws) > 1:
             st.info(f"Using 1 well map for {len(uploaded_raws)} raw plate files.")
             # Use the same well map for all raw files
@@ -38,6 +53,7 @@ if page == "Generate Fingerprints (Multi-Plate)":
             with ZipFile(zip_buf, 'w') as zip_out:
                 for i in range(len(uploaded_raws)):
                     raw_df = pd.read_csv(uploaded_raws[i])
+                    compound_name = compound_names[i]
 
                     if "BetaGlo" not in raw_df.columns or "BacTiterGlo" not in raw_df.columns:
                         st.warning(f"Missing required columns in raw data file {uploaded_raws[i].name}")
@@ -45,6 +61,9 @@ if page == "Generate Fingerprints (Multi-Plate)":
 
                     merged = pd.merge(map_df, raw_df, on="Well")
                     merged["NormalizedSignal"] = merged["BetaGlo"] / merged["BacTiterGlo"]
+                    
+                    # Add compound name to the merged data
+                    merged["Compound"] = compound_name
 
                     norm_data = []
                     grouped = merged.groupby(["Compound", "Reporter", "Dose"])
@@ -67,7 +86,6 @@ if page == "Generate Fingerprints (Multi-Plate)":
                     norm_df["Feature"] = norm_df["Reporter"] + "_" + norm_df["Dose"].astype(str) + "x"
                     pivot_df = norm_df.pivot(index="Compound", columns="Feature", values="FoldChange").reset_index()
 
-                    compound_name = pivot_df['Compound'].iloc[0]
                     st.subheader(f"📊 Expression Profile: {compound_name}")
                     st.dataframe(pivot_df)
 
@@ -94,6 +112,7 @@ if page == "Generate Fingerprints (Multi-Plate)":
                 for i in range(len(uploaded_raws)):
                     raw_df = pd.read_csv(uploaded_raws[i])
                     map_df = pd.read_csv(uploaded_maps[i])
+                    compound_name = compound_names[i]
 
                     if "BetaGlo" not in raw_df.columns or "BacTiterGlo" not in raw_df.columns:
                         st.warning(f"Missing required columns in raw data file {uploaded_raws[i].name}")
@@ -101,6 +120,9 @@ if page == "Generate Fingerprints (Multi-Plate)":
 
                     merged = pd.merge(map_df, raw_df, on="Well")
                     merged["NormalizedSignal"] = merged["BetaGlo"] / merged["BacTiterGlo"]
+                    
+                    # Add compound name to the merged data
+                    merged["Compound"] = compound_name
 
                     norm_data = []
                     grouped = merged.groupby(["Compound", "Reporter", "Dose"])
@@ -123,7 +145,6 @@ if page == "Generate Fingerprints (Multi-Plate)":
                     norm_df["Feature"] = norm_df["Reporter"] + "_" + norm_df["Dose"].astype(str) + "x"
                     pivot_df = norm_df.pivot(index="Compound", columns="Feature", values="FoldChange").reset_index()
 
-                    compound_name = pivot_df['Compound'].iloc[0]
                     st.subheader(f"📊 Expression Profile: {compound_name}")
                     st.dataframe(pivot_df)
 
@@ -147,6 +168,8 @@ if page == "Generate Fingerprints (Multi-Plate)":
             st.info("💡 You can either:")
             st.info("   • Upload 1 well map for multiple raw files (same layout)")
             st.info("   • Upload 1 well map for each raw file (different layouts)")
+    elif uploaded_raws and uploaded_maps:
+        st.warning("⚠️ Please specify compound names for all raw plate files to proceed.")
     elif uploaded_raws or uploaded_maps:
         st.warning("⚠️ Please upload both raw plate files and well maps to proceed.")
 
