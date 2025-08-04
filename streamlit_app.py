@@ -188,6 +188,11 @@ elif page == "Upload & Cluster":
     st.write("Raw Data:", df.head())
     compound_names = df.iloc[:, 0]
     features_df = df.drop(columns=[df.columns[0]])
+    
+    # Remove Cluster column if it exists (from previous clustering)
+    if "Cluster" in features_df.columns:
+        features_df = features_df.drop(columns=["Cluster"])
+        st.info("Removed 'Cluster' column from analysis (it's not a feature).")
 
     # Check if we have enough data for analysis
     if len(df) < 2:
