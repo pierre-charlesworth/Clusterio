@@ -99,6 +99,15 @@ elif page == "Upload & Cluster":
     compound_names = df.iloc[:, 0]
     features_df = df.drop(columns=[df.columns[0]])
 
+    # Check if we have enough data for analysis
+    if len(df) < 2:
+        st.error("❌ Need at least 2 compounds for clustering analysis.")
+        st.stop()
+    
+    if features_df.shape[1] < 1:
+        st.error("❌ Need at least 1 feature column for analysis.")
+        st.stop()
+
     from sklearn.preprocessing import StandardScaler
     from sklearn.decomposition import PCA
     from sklearn.cluster import KMeans
@@ -113,37 +122,68 @@ elif page == "Upload & Cluster":
     st.session_state.reference_scaled = X_scaled
     st.session_state.reference_features = features_df
 
-    pca = PCA(n_components=2)
-    X_pca = pca.fit_transform(X_scaled)
-    st.subheader("PCA Projection")
-    fig, ax = plt.subplots()
-    ax.scatter(X_pca[:, 0], X_pca[:, 1])
-    for i, name in enumerate(compound_names):
-        ax.annotate(name, (X_pca[i, 0], X_pca[i, 1]), fontsize=8)
-    ax.set_xlabel("PC1")
-    ax.set_ylabel("PC2")
-    st.pyplot(fig)
+    # PCA with error handling
+    try:
+        # Determine appropriate number of components
+        n_components = min(2, min(X_scaled.shape[0] - 1, X_scaled.shape[1]))
+        if n_components < 1:
+            st.warning("⚠️ Insufficient data for PCA. Need at least 2 samples and 1 feature.")
+            st.stop()
+        
+        pca = PCA(n_components=n_components)
+        X_pca = pca.fit_transform(X_scaled)
+        
+        st.subheader("PCA Projection")
+        fig, ax = plt.subplots()
+        ax.scatter(X_pca[:, 0], X_pca[:, 1])
+        for i, name in enumerate(compound_names):
+            ax.annotate(name, (X_pca[i, 0], X_pca[i, 1]), fontsize=8)
+        ax.set_xlabel("PC1")
+        ax.set_ylabel("PC2")
+        st.pyplot(fig)
+        
+    except Exception as e:
+        st.error(f"❌ PCA failed: {str(e)}")
+        st.info("This might be due to insufficient data or singular covariance matrix.")
+        st.stop()
 
-    st.subheader("Hierarchical Clustering")
-    linked = linkage(X_scaled, method="ward")
-    fig2, ax2 = plt.subplots(figsize=(8, 4))
-    dendrogram(linked, labels=compound_names.values, leaf_rotation=90, ax=ax2)
-    st.pyplot(fig2)
+    # Hierarchical clustering with error handling
+    try:
+        st.subheader("Hierarchical Clustering")
+        linked = linkage(X_scaled, method="ward")
+        fig2, ax2 = plt.subplots(figsize=(8, 4))
+        dendrogram(linked, labels=compound_names.values, leaf_rotation=90, ax=ax2)
+        st.pyplot(fig2)
+    except Exception as e:
+        st.error(f"❌ Hierarchical clustering failed: {str(e)}")
+        st.stop()
 
-    k = st.slider("Select number of clusters (K)", 2, 10, 4)
-    kmeans = KMeans(n_clusters=k, random_state=42)
-    clusters = kmeans.fit_predict(X_scaled)
-    df["Cluster"] = clusters
+    # K-means clustering with validation
+    max_clusters = min(len(df), 10)  # Don't allow more clusters than samples
+    if max_clusters < 2:
+        st.error("❌ Need at least 2 samples for clustering.")
+        st.stop()
+    
+    k = st.slider("Select number of clusters (K)", 2, max_clusters, min(4, max_clusters))
+    
+    try:
+        kmeans = KMeans(n_clusters=k, random_state=42)
+        clusters = kmeans.fit_predict(X_scaled)
+        df["Cluster"] = clusters
 
-    st.subheader("Cluster Annotations")
-    cluster_labels = {}
-    for cluster_id in sorted(df["Cluster"].unique()):
-        label = st.text_input(f"Label for Cluster {cluster_id}", key=f"cluster_{cluster_id}")
-        cluster_labels[cluster_id] = label
+        st.subheader("Cluster Annotations")
+        cluster_labels = {}
+        for cluster_id in sorted(df["Cluster"].unique()):
+            label = st.text_input(f"Label for Cluster {cluster_id}", key=f"cluster_{cluster_id}")
+            cluster_labels[cluster_id] = label
 
-    if st.button("Apply Labels and Save Reference"):
-        df["MoA"] = df["Cluster"].map(cluster_labels)
-        df.drop(columns=["Cluster"], inplace=True)
-        st.session_state.reference_data = df
-        st.download_button("Download Annotated Reference", df.to_csv(index=False), file_name="annotated_reference.csv")
-        st.success("Reference dataset updated and ready for matching.")
+        if st.button("Apply Labels and Save Reference"):
+            df["MoA"] = df["Cluster"].map(cluster_labels)
+            df.drop(columns=["Cluster"], inplace=True)
+            st.session_state.reference_data = df
+            st.download_button("Download Annotated Reference", df.to_csv(index=False), file_name="annotated_reference.csv")
+            st.success("Reference dataset updated and ready for matching.")
+            
+    except Exception as e:
+        st.error(f"❌ K-means clustering failed: {str(e)}")
+        st.stop()
