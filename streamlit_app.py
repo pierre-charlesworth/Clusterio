@@ -272,7 +272,9 @@ elif page == "Upload & Cluster":
         st.error("❌ Need at least 2 samples for clustering.")
         st.stop()
     
-    k = st.slider("Select number of clusters (K)", 2, max_clusters, min(4, max_clusters))
+    # Calculate a valid default value for the slider
+    default_k = min(4, max_clusters)  # Default to 4, but not more than max_clusters
+    k = st.slider("Select number of clusters (K)", 2, max_clusters, default_k)
     
     try:
         kmeans = KMeans(n_clusters=k, random_state=42)
