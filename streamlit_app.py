@@ -250,6 +250,73 @@ elif page == "Upload & Cluster":
         if n_components > 1:
             st.write(f"Explained variance ratio: PC1={pca.explained_variance_ratio_[0]:.3f}, PC2={pca.explained_variance_ratio_[1]:.3f}")
         
+        # Star Graph / Radar Chart
+        try:
+            st.subheader("⭐ Star Graph / Radar Chart")
+            st.info("This shows the expression profile of each compound across all features.")
+            
+            # Prepare data for radar chart
+            features = features_df.columns.tolist()
+            n_features = len(features)
+            
+            if n_features >= 3:  # Need at least 3 features for a meaningful radar chart
+                # Calculate angles for each feature
+                angles = [n / float(n_features) * 2 * np.pi for n in range(n_features)]
+                angles += angles[:1]  # Complete the circle
+                
+                # Create radar chart
+                fig, ax = plt.subplots(figsize=(10, 8), subplot_kw=dict(projection='polar'))
+                
+                # Plot each compound
+                colors = plt.cm.Set3(np.linspace(0, 1, len(compound_names)))
+                
+                for i, compound in enumerate(compound_names):
+                    values = features_df.iloc[i].values.tolist()
+                    values += values[:1]  # Complete the circle
+                    
+                    ax.plot(angles, values, 'o-', linewidth=2, label=compound, color=colors[i])
+                    ax.fill(angles, values, alpha=0.25, color=colors[i])
+                
+                # Set labels
+                ax.set_xticks(angles[:-1])
+                ax.set_xticklabels(features, size=8)
+                ax.set_ylim(0, features_df.max().max() * 1.1)
+                ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.0))
+                ax.set_title("Compound Expression Profiles", size=14, pad=20)
+                
+                st.pyplot(fig)
+                
+                # Add interactive compound selection
+                if len(compound_names) > 1:
+                    selected_compound = st.selectbox(
+                        "Select compound to highlight:",
+                        compound_names.tolist(),
+                        index=0
+                    )
+                    
+                    # Create individual radar chart for selected compound
+                    fig2, ax2 = plt.subplots(figsize=(8, 6), subplot_kw=dict(projection='polar'))
+                    
+                    compound_idx = compound_names.tolist().index(selected_compound)
+                    values = features_df.iloc[compound_idx].values.tolist()
+                    values += values[:1]
+                    
+                    ax2.plot(angles, values, 'o-', linewidth=3, color='red', label=selected_compound)
+                    ax2.fill(angles, values, alpha=0.3, color='red')
+                    
+                    ax2.set_xticks(angles[:-1])
+                    ax2.set_xticklabels(features, size=10)
+                    ax2.set_ylim(0, features_df.max().max() * 1.1)
+                    ax2.set_title(f"Expression Profile: {selected_compound}", size=14, pad=20)
+                    
+                    st.pyplot(fig2)
+            else:
+                st.warning("⚠️ Need at least 3 features for a meaningful radar chart.")
+                
+        except Exception as e:
+            st.error(f"❌ Star graph failed: {str(e)}")
+            st.info("This might be due to insufficient features or data issues.")
+
     except Exception as e:
         st.error(f"❌ PCA failed: {str(e)}")
         st.info("This might be due to insufficient data or singular covariance matrix.")
